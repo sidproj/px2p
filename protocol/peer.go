@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 )
 
 type Message struct {
@@ -19,9 +20,10 @@ type Peer struct {
 	enc  *json.Encoder
 	dec  *json.Decoder
 
-	Send    chan Message
-	Done    chan struct{}
-	handler MessageHandler
+	Send      chan Message
+	Done      chan struct{}
+	handler   MessageHandler
+	closeOnce sync.Once
 }
 
 func NewPeer(conn net.Conn, handler MessageHandler) *Peer {
@@ -36,7 +38,7 @@ func NewPeer(conn net.Conn, handler MessageHandler) *Peer {
 }
 
 func (p *Peer) ReadLoop() {
-	defer close(p.Done)
+	defer p.Close()
 
 	for {
 		var msg Message
@@ -61,4 +63,11 @@ func (p *Peer) WriteLoop() {
 			return
 		}
 	}
+}
+
+func (p *Peer) Close() {
+	p.closeOnce.Do(func() {
+		close(p.Done)
+		p.conn.Close()
+	})
 }

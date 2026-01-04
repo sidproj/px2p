@@ -36,8 +36,7 @@ func Comunicate(conn net.Conn) {
 	go peer.ReadLoop()
 	go peer.WriteLoop()
 
-	for {
-	}
+	<-peer.Done
 
 }
 

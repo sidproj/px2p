@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"px2p/protocol"
+	"strings"
 )
 
 func handleMessage(p *protocol.Peer, msg protocol.Message) {
@@ -45,15 +46,15 @@ func StartClient(conn net.Conn) {
 			Data: []byte(data),
 		}
 
-		if data == "EXIT" {
-			peer.Done <- struct{}{}
+		if strings.TrimSpace(data) == "EXIT" {
+			peer.Close()
 		}
 	}
 }
 
 func Connect() {
 
-	conn, err := net.Dial("tcp", "localhost:4040")
+	conn, err := net.Dial("tcp", "192.168.1.5:4040")
 
 	fmt.Println("Connected to the server.")
 
@@ -61,8 +62,6 @@ func Connect() {
 		fmt.Println("Error:", err)
 		return
 	}
-
-	defer conn.Close()
 
 	err = protocol.ClientPerformHandshake(conn, "peer-1", "v1")
 
@@ -74,5 +73,4 @@ func Connect() {
 	fmt.Println("Handshake successful!")
 
 	StartClient(conn)
-
 }
