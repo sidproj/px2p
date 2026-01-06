@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"px2p/core"
 	"px2p/protocol"
 	"time"
 )
@@ -14,14 +15,14 @@ type Handshake struct {
 	Version string `json:"version"`
 }
 
-func handleMessage(p *protocol.Peer, msg protocol.Message) {
+func handleMessage(p *core.Peer, msg core.Message) {
 	switch msg.Type {
 	case "PING":
 		fmt.Println("Client: PING")
-		p.Send <- protocol.Message{Type: "PONG"}
+		p.Send <- core.Message{Type: "PONG"}
 	case "CHAT":
 		fmt.Println("Client: ", string(msg.Data))
-		p.Send <- protocol.Message{Type: "CHAT", Data: msg.Data}
+		p.Send <- core.Message{Type: "CHAT", Data: msg.Data}
 	case "ERROR":
 		fmt.Println("Client error: ", string(msg.Data))
 	default:
@@ -29,22 +30,20 @@ func handleMessage(p *protocol.Peer, msg protocol.Message) {
 	}
 }
 
-func Comunicate(conn net.Conn) {
+func Comunicate(conn net.Conn, peer *core.Peer, peerEvent chan core.PeerEvent) {
 
-	peer := protocol.NewPeer(conn, handleMessage)
-
-	go peer.ReadLoop()
+	go peer.ReadLoop(peerEvent)
 	go peer.WriteLoop()
 
 	<-peer.Done
 
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, peerEvent chan core.PeerEvent) {
 
 	defer conn.Close()
 
-	// set timeout
+	// ------------------- handshake ritual start -------------------
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 	fmt.Println("New connection: ", conn.RemoteAddr(), conn.LocalAddr())
@@ -54,10 +53,24 @@ func handleConnection(conn net.Conn) {
 		fmt.Println("Handshake failed: ", err)
 		return
 	}
-
 	conn.SetDeadline(time.Time{})
 	fmt.Println("Handshake successful with: ", peerID)
-	Comunicate(conn)
+	// ------------------- handshake ritual end -------------------
+
+	peer := core.NewPeer(conn, peerID, handleMessage)
+	peerInfo, err := core.NewPeerInfo(peer)
+
+	if err != nil {
+		fmt.Println("Unable to create peerInfo")
+		return
+	}
+
+	peerEvent <- core.PeerEvent{
+		Type: core.PEER_JOINED,
+		Peer: peerInfo,
+	}
+
+	Comunicate(conn, peer, peerEvent)
 }
 
 func StartServer() {
@@ -72,12 +85,20 @@ func StartServer() {
 
 	fmt.Println("Started listening on port:", ln.Addr())
 
+	serverState := core.ServerState{
+		PeerInfoList: core.PeerInfoList{
+			Max:   3,
+			Peers: make(map[string]core.PeerInfo),
+		},
+		Events: make(chan core.PeerEvent, 10),
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			fmt.Println("Error:", err)
 			continue
 		}
-		go handleConnection(conn)
+		go handleConnection(conn, serverState.Events)
 	}
 }

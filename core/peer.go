@@ -1,4 +1,4 @@
-package protocol
+package core
 
 import (
 	"encoding/json"
@@ -7,18 +7,11 @@ import (
 	"sync"
 )
 
-type Message struct {
-	Type string `json:"type"` // "CHAT", "PING", "PONG", "ERROR" , "STORE", "GET"
-	Data []byte `json:"data,omitempty"`
-	Hash string `json:"hash,omitempty"`
-}
-
-type MessageHandler func(p *Peer, msg Message)
-
 type Peer struct {
-	conn net.Conn
-	enc  *json.Encoder
-	dec  *json.Decoder
+	Conn   net.Conn
+	PeerId string
+	enc    *json.Encoder
+	dec    *json.Decoder
 
 	Send      chan Message
 	Done      chan struct{}
@@ -26,9 +19,10 @@ type Peer struct {
 	closeOnce sync.Once
 }
 
-func NewPeer(conn net.Conn, handler MessageHandler) *Peer {
+func NewPeer(conn net.Conn, peerID string, handler MessageHandler) *Peer {
 	return &Peer{
-		conn:    conn,
+		Conn:    conn,
+		PeerId:  peerID,
 		enc:     json.NewEncoder(conn),
 		dec:     json.NewDecoder(conn),
 		Send:    make(chan Message, 16),
@@ -37,7 +31,7 @@ func NewPeer(conn net.Conn, handler MessageHandler) *Peer {
 	}
 }
 
-func (p *Peer) ReadLoop() {
+func (p *Peer) ReadLoop(peerEvent chan PeerEvent) {
 	defer p.Close()
 
 	for {
@@ -46,7 +40,6 @@ func (p *Peer) ReadLoop() {
 			fmt.Println("Read error:", err)
 			return
 		}
-
 		p.handler(p, msg)
 	}
 }
@@ -65,9 +58,18 @@ func (p *Peer) WriteLoop() {
 	}
 }
 
+func (p *Peer) SendMessage(msg Message) bool {
+	select {
+	case <-p.Done:
+		return false
+	case p.Send <- msg:
+		return true
+	}
+}
+
 func (p *Peer) Close() {
 	p.closeOnce.Do(func() {
 		close(p.Done)
-		p.conn.Close()
+		p.Conn.Close()
 	})
 }

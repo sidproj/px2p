@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"px2p/core"
 	"px2p/protocol"
 	"strings"
 )
 
-func handleMessage(p *protocol.Peer, msg protocol.Message) {
+func handleMessage(p *core.Peer, msg core.Message) {
 	switch msg.Type {
 	case "PONG":
 		fmt.Println("Server: PONG")
@@ -24,14 +25,15 @@ func handleMessage(p *protocol.Peer, msg protocol.Message) {
 
 func StartClient(conn net.Conn) {
 
-	peer := protocol.NewPeer(conn, handleMessage)
+	peerID := protocol.GeneratePeerID()
+	peer := core.NewPeer(conn, peerID, handleMessage)
 
-	go peer.ReadLoop()
+	// go peer.ReadLoop()
 	go peer.WriteLoop()
 
 	reader := bufio.NewReader(os.Stdin)
 
-	peer.Send <- protocol.Message{Type: "PING"}
+	peer.SendMessage(core.Message{Type: "PING"})
 
 	for {
 		fmt.Print("Client: ")
@@ -41,14 +43,15 @@ func StartClient(conn net.Conn) {
 			return
 		}
 
-		peer.Send <- protocol.Message{
-			Type: "CHAT",
-			Data: []byte(data),
-		}
-
 		if strings.TrimSpace(data) == "EXIT" {
 			peer.Close()
+			return
 		}
+
+		peer.SendMessage(core.Message{
+			Type: "CHAT",
+			Data: []byte(data),
+		})
 	}
 }
 
